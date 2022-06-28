@@ -1,0 +1,4 @@
+nl:
+  XD\Honeypot\Forms\HoneypotField:
+    VALIDATE_ERROR: 'Uw inzending kon niet worden gevalideerd'
+    SPAM: 'Uw inzending is gemarkeerd als spam'
