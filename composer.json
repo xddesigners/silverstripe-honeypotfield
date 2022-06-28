@@ -19,10 +19,5 @@
         "psr-4": {
             "XD\\Honeypot\\": "src"
         }
-    },
-    "extra": {
-      "expose": [
-        "css"
-      ]
     }
 }
