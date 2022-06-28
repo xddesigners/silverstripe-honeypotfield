@@ -1,6 +1,6 @@
 {
     "name": "xddesigners/honeypotfield",
-    "description": "Adds a honeypot in adittion to the nocapcha field",
+    "description": "Adds a honeypot in addition to the nocapcha field",
     "type": "silverstripe-vendormodule",
     "keywords": ["SilverStripe", "Spam", "Protection", "Honeypot"],
     "license": "BSD-3-Clause",
