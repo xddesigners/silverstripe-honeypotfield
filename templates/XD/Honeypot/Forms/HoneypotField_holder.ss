@@ -1,7 +1,6 @@
-<$Tag class="CompositeField $extraClass <% if $ColumnCount %>multicolumn<% end_if %>" id="$HolderID" style="display: none" aria-hidden="true">
+<$Tag class="CompositeField alt-names-holder" id="$HolderID">
 <% if $Tag == 'fieldset' && $Legend %>
     <legend>$Legend</legend>
 <% end_if %>
-
 $Field
 </$Tag>
