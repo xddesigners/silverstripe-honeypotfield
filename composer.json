@@ -13,7 +13,7 @@
         }
     ],
     "require": {
-        "silverstripe/framework": "^4",
+        "silverstripe/framework": "^5",
         "undefinedoffset/silverstripe-nocaptcha": "*"
     },
     "autoload": {
