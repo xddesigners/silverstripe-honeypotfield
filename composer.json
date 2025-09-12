@@ -6,12 +6,14 @@
     "license": "BSD-3-Clause",
     "authors": [
         {
-            "name": "Bram de Leeuw",
-            "email": "bram@xd.nl"
+            "name": "Remy Vaartjes",
+            "email": "remy@xd.nl"
+        },{
+            "name": "Bram de Leeuw"
         }
     ],
     "require": {
-        "silverstripe/framework": "^4 || ^5",
+        "silverstripe/framework": "^4",
         "undefinedoffset/silverstripe-nocaptcha": "*"
     },
     "autoload": {
