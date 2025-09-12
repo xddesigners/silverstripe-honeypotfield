@@ -3,12 +3,14 @@
 namespace XD\Honeypot\Forms;
 
 use SilverStripe\Control\Controller;
+use SilverStripe\Core\Validation\ValidationResult;
 use SilverStripe\Forms\CompositeField;
 use SilverStripe\Forms\FieldList;
 use SilverStripe\Forms\HiddenField;
 use SilverStripe\Forms\TextField;
 use SilverStripe\Control\Session;
 use SilverStripe\Forms\FormField;
+use SilverStripe\UserForms\Model\EditableFormField\Validator;
 use SilverStripe\View\Requirements;
 
 class HoneypotField extends CompositeField
@@ -73,7 +75,7 @@ class HoneypotField extends CompositeField
         return $request->getSession();
     }
 
-    public function validate($validator)
+    public function validate(): ValidationResult
     {
         $children = $this->getChildren();
 
@@ -81,16 +83,18 @@ class HoneypotField extends CompositeField
         $session = $this->getSession();
         $fieldCreated = $session->get('honeypot_time');
 
+        $result = ValidationResult::create();
+
         if (!$fieldCreated) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam') . ' - 0' );
-            return false;
+            $result->addFieldError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam') . ' - 0' );
+            return $result;
         }
 
         $submittedIn = self::config()->get('submitted_in_seconds');
         $seconds = time() - (int)$fieldCreated;
         if ($seconds < $submittedIn) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 1 (' . $seconds . ')'  );
-            return false;
+            $result->addFieldError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 1 (' . $seconds . ')');
+            return $result;
         }
 
         // Validate dynamically generated "MyName" and "MyEmail" fields
@@ -100,29 +104,31 @@ class HoneypotField extends CompositeField
         // Loop through children and find dynamically created honeypot fields
         foreach ($children as $field) {
             if (strpos($field->getName(), 'AltName') !== false) {
+                /** @var TextField $myNameField */
                 $myNameField = $field;
             }
             if (strpos($field->getName(), 'AltEmail') !== false) {
+                /** @var TextField $myEmailField */
                 $myEmailField = $field;
             }
         }
 
         if (!$myNameField || !$myEmailField) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 2' );
-            return false;
+            $result->addFieldError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 2');
+            return $result;
         }
 
         // Check if any honeypot fields have been filled out (i.e., they should be empty)
-        if ($myNameField && !empty($myNameField->Value())) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 3' );
-            return false;
+        if ($myNameField && !empty($myNameField->getValue())) {
+            $result->addFieldError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 3');
+            return $result;
         }
 
-        if ($myEmailField && !empty($myEmailField->Value())) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 4' );
-            return false;
+        if ($myEmailField && !empty($myEmailField->getValue())) {
+            $result->addFieldError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 4');
+            return $result;
         }
 
-        return parent::validate($validator);
+        return parent::validate();
     }
 }
