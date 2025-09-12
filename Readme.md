@@ -6,7 +6,7 @@ The honeypot is inspired by [spatie/laravel-honeypot](https://github.com/spatie/
 ## Installation
 
 ```bash
-composer require xddesigners/honeypotfield
+composer require xddesigners/silverstripe-honeypotfield
 ```
 
 ## Usage
