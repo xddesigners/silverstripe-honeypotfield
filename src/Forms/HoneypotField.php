@@ -2,63 +2,103 @@
 
 namespace XD\Honeypot\Forms;
 
+use Psr\SimpleCache\CacheInterface;
 use SilverStripe\Control\Controller;
+use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Forms\CompositeField;
 use SilverStripe\Forms\FieldList;
 use SilverStripe\Forms\HiddenField;
 use SilverStripe\Forms\TextField;
-use SilverStripe\Control\Session;
-use SilverStripe\Forms\FormField;
 use SilverStripe\View\Requirements;
 
 class HoneypotField extends CompositeField
 {
-    private static $submitted_in_seconds = 5;
+    /**
+     * Minimum seconds between form load and submission.
+     */
+    private static $submitted_in_seconds_min = 3;
+
+    /**
+     * Maximum seconds between form load and submission (.5 hour).
+     * Expired sessions / cached pages with stale forms are rejected.
+     */
+    private static $submitted_in_seconds_max = 1800;
+
+    /**
+     * Maximum allowed submissions per IP within the rate-limit window.
+     */
+    private static $rate_limit_max = 10;
+
+    /**
+     * Rate-limit window in seconds.
+     */
+    private static $rate_limit_window = 3600;
+
+    /**
+     * Prefix for the first decoy trap field.
+     * Must look like a legitimate field name to attract bot fill-in.
+     */
+    private static $trap_field_a = 'phone';
+
+    /**
+     * Prefix for the second decoy trap field.
+     */
+    private static $trap_field_b = 'website';
+
+    /**
+     * Name of the hidden JS-interaction field.
+     * Set to '1' by JS on real user activity; empty submissions are bots.
+     */
+    private static $interaction_field = 'page_token';
 
     public function __construct()
     {
         parent::__construct();
         $time = $this->storeTimeInSession();
+
+        $trapA = self::config()->get('trap_field_a');
+        $trapB = self::config()->get('trap_field_b');
+        $interaction = self::config()->get('interaction_field');
+
         $this->setChildren(
-            new FieldList(
-                [
-                    TextField::create('AltName_' . $time, 'Name')
-                        ->setAttribute('autocomplete', 'nope')
-                        ->setAttribute('tabindex', '-1'),
-                    TextField::create('AltEmail_' . $time, 'Email')
-                        ->setAttribute('autocomplete', 'nope')
-                        ->setAttribute('tabindex', '-1'),
-                ]
-            )
+            new FieldList([
+                TextField::create($trapA . '_' . $time, 'Phone')
+                    ->setAttribute('autocomplete', 'nope')
+                    ->setAttribute('tabindex', '-1'),
+                TextField::create($trapB . '_' . $time, 'Website')
+                    ->setAttribute('autocomplete', 'nope')
+                    ->setAttribute('tabindex', '-1'),
+                HiddenField::create($interaction, ''),
+            ])
         );
-        $this->setName('AltNames');
 
-        $this->addJavascript($time);
+        // Neutral composite name — no "honeypot" hint in HTML output
+        $this->setName('ContactFields');
+
+        $this->addRequirements();
     }
 
-    public function addJavascript($time)
+    /**
+     * Register CSS and JS needed to hide the trap fields and track real interaction.
+     */
+    public function addRequirements()
     {
-        // Use the dynamically generated field names in the JS
-        $js = "
-            document.addEventListener('DOMContentLoaded', function () {
-                var altNamesField = document.querySelector('.alt-names-holder');
-                if (altNamesField) {
-                    altNamesField.style.position = 'absolute';
-                    altNamesField.style.left = '-9999px';
-                }
-            });
-        ";
-        Requirements::customScript($js);
+        Requirements::css('xddesigners/honeypotfield:client/css/honeypot.css');
+        Requirements::javascript('xddesigners/honeypotfield:client/javascript/honeypot.js');
     }
 
+    /**
+     * Store the current timestamp in the session when the form is first loaded (GET).
+     *
+     * @return int
+     */
     public function storeTimeInSession()
     {
         $session = $this->getSession();
 
-        // escape if request method is not GET
         $controller = Controller::curr();
         if ($controller->getRequest()->httpMethod() !== 'GET') {
-            return $session->get('honeypot_time');
+            return (int) $session->get('honeypot_time');
         }
 
         $time = time();
@@ -66,60 +106,117 @@ class HoneypotField extends CompositeField
         return $time;
     }
 
+    /**
+     * @return \SilverStripe\Control\Session
+     */
     public function getSession()
     {
         $controller = Controller::curr();
-        $request = $controller->getRequest();
-        return $request->getSession();
+        return $controller->getRequest()->getSession();
+    }
+
+    /**
+     * Return the visitor's IP address.
+     *
+     * @return string
+     */
+    protected function getClientIp()
+    {
+        $controller = Controller::curr();
+        return $controller->getRequest()->getIP() ?: 'unknown';
+    }
+
+    /**
+     * Check and increment the per-IP submission counter.
+     * Returns false when the limit is exceeded.
+     *
+     * @return bool
+     */
+    protected function checkRateLimit()
+    {
+        try {
+            /** @var CacheInterface $cache */
+            $cache    = Injector::inst()->get(CacheInterface::class . '.honeypot');
+            $ip       = $this->getClientIp();
+            $cacheKey = 'hp_' . md5($ip);
+            $count    = (int) $cache->get($cacheKey, 0);
+
+            if ($count >= (int) self::config()->get('rate_limit_max')) {
+                return false;
+            }
+
+            $cache->set($cacheKey, $count + 1, (int) self::config()->get('rate_limit_window'));
+        } catch (\Exception $e) {
+            // Cache unavailable — fail open so legitimate users aren't blocked
+        }
+
+        return true;
     }
 
     public function validate($validator)
     {
-        $children = $this->getChildren();
+        $spam    = _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam');
+        $request = Controller::curr()->getRequest();
+        $post    = $request->postVars();
 
-        // validate time from session
-        $session = $this->getSession();
+        // 1. Timestamp: must exist, be >= min seconds, and <= max seconds old.
+        //    Checked before rate-limit so crawlers that skip JS don't consume quota.
+        $session      = $this->getSession();
         $fieldCreated = $session->get('honeypot_time');
 
         if (!$fieldCreated) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam') . ' - 0' );
+            $validator->validationError($this->name, $spam);
             return false;
         }
 
-        $submittedIn = self::config()->get('submitted_in_seconds');
-        $seconds = time() - (int)$fieldCreated;
-        if ($seconds < $submittedIn) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 1 (' . $seconds . ')'  );
+        $seconds = time() - (int) $fieldCreated;
+        $minSec  = (int) self::config()->get('submitted_in_seconds_min');
+        $maxSec  = (int) self::config()->get('submitted_in_seconds_max');
+
+        if ($seconds < $minSec || $seconds > $maxSec) {
+            $validator->validationError($this->name, $spam);
             return false;
         }
 
-        // Validate dynamically generated "MyName" and "MyEmail" fields
-        $myNameField = null;
-        $myEmailField = null;
+        // 2. JS interaction token — read from raw POST, not field object.
+        //    CompositeField children are not hydrated via the normal form data path.
+        $interactionName  = self::config()->get('interaction_field');
+        $interactionValue = isset($post[$interactionName]) ? $post[$interactionName] : '';
 
-        // Loop through children and find dynamically created honeypot fields
-        foreach ($children as $field) {
-            if (strpos($field->getName(), 'AltName') !== false) {
-                $myNameField = $field;
+        if (empty($interactionValue)) {
+            $validator->validationError($this->name, $spam);
+            return false;
+        }
+
+        // 3. Trap fields must be empty — read from raw POST for the same reason.
+        $trapA      = self::config()->get('trap_field_a');
+        $trapB      = self::config()->get('trap_field_b');
+        $trapAValue = null;
+        $trapBValue = null;
+
+        foreach ($post as $key => $value) {
+            if (strpos($key, $trapA . '_') === 0) {
+                $trapAValue = $value;
+            } elseif (strpos($key, $trapB . '_') === 0) {
+                $trapBValue = $value;
             }
-            if (strpos($field->getName(), 'AltEmail') !== false) {
-                $myEmailField = $field;
-            }
         }
 
-        if (!$myNameField || !$myEmailField) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 2' );
+        if ($trapAValue === null || $trapBValue === null) {
+            // Trap fields missing from submission entirely
+            $validator->validationError($this->name, $spam);
             return false;
         }
 
-        // Check if any honeypot fields have been filled out (i.e., they should be empty)
-        if ($myNameField && !empty($myNameField->Value())) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 3' );
+        if (!empty($trapAValue) || !empty($trapBValue)) {
+            $validator->validationError($this->name, $spam);
             return false;
         }
 
-        if ($myEmailField && !empty($myEmailField->Value())) {
-            $validator->validationError($this->name, _t(__CLASS__ . '.SPAM', 'Your submission has been marked as spam'). ' - 4' );
+        // 4. IP rate limiting — only counted after all other checks pass,
+        //    so bots filling trap fields don't exhaust the legitimate user's quota.
+        if (!$this->checkRateLimit()) {
+            $validator->validationError($this->name, $spam);
             return false;
         }
 

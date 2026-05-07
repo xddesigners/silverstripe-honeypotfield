@@ -1,4 +1,4 @@
-<$Tag class="CompositeField alt-names-holder" id="$HolderID">
+<$Tag class="CompositeField contact-fields-group" id="$HolderID">
 <% if $Tag == 'fieldset' && $Legend %>
     <legend>$Legend</legend>
 <% end_if %>
