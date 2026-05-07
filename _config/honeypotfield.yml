@@ -8,3 +8,12 @@ Name: honeypotfield
 # configure if you want to use both capcha and honeypot protection
 # SilverStripe\SpamProtection\Extension\FormSpamProtectionExtension:
 #   default_spam_protector: XD\Honeypot\Protectors\NocaptchaProtector
+
+---
+Name: honeypotfield-cache
+---
+SilverStripe\Core\Injector\Injector:
+  Psr\SimpleCache\CacheInterface.honeypot:
+    factory: SilverStripe\Core\Cache\CacheFactory
+    constructor:
+      namespace: 'honeypot'

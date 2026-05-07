@@ -1,25 +1,32 @@
 {
-    "name": "xddesigners/silverstripe-honeypotfield",
-    "description": "Adds a honeypot in addition to the nocapcha field",
-    "type": "silverstripe-vendormodule",
-    "keywords": ["SilverStripe", "Spam", "Protection", "Honeypot"],
-    "license": "BSD-3-Clause",
-    "authors": [
-        {
-            "name": "Remy Vaartjes",
-            "email": "remy@xd.nl"
-        },
-        {
-            "name": "Bram de Leeuw"
-        }
-    ],
-    "require": {
-        "silverstripe/framework": "^6",
-        "undefinedoffset/silverstripe-nocaptcha": "*"
-    },
-    "autoload": {
-        "psr-4": {
-            "XD\\Honeypot\\": "src"
-        }
+  "name": "xddesigners/silverstripe-honeypotfield",
+  "description": "Adds a honeypot in addition to the nocapcha field",
+  "type": "silverstripe-vendormodule",
+  "keywords": [
+    "SilverStripe",
+    "Spam",
+    "Protection",
+    "Honeypot"
+  ],
+  "license": "BSD-3-Clause",
+  "authors": [
+    {
+      "name": "Remy Vaartjes",
+      "email": "remy@xd.nl"
     }
+  ],
+  "require": {
+    "silverstripe/framework": "^6",
+    "undefinedoffset/silverstripe-nocaptcha": "*"
+  },
+  "extra": {
+    "expose": [
+      "client"
+    ]
+  },
+  "autoload": {
+    "psr-4": {
+      "XD\\Honeypot\\": "src"
+    }
+  }
 }
