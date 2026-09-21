@@ -97,7 +97,13 @@ class HoneypotField extends CompositeField
     {
         $session = $this->getSession();
 
+        // No web request (e.g. CLI: a task publishing a UserDefinedForm constructs this field via
+        // onBeforeWrite) → Controller::curr() is null and there is no session to stamp. Bail safely.
         $controller = Controller::curr();
+        if (!$session || !$controller || !$controller->getRequest()) {
+            return 0;
+        }
+
         if ($controller->getRequest()->httpMethod() !== 'GET') {
             return (int)$session->get('honeypot_time');
         }
@@ -108,11 +114,14 @@ class HoneypotField extends CompositeField
     }
 
     /**
-     * @return \SilverStripe\Control\Session
+     * @return \SilverStripe\Control\Session|null Null outside a web request (e.g. CLI/task context).
      */
     public function getSession()
     {
         $controller = Controller::curr();
+        if (!$controller || !$controller->getRequest()) {
+            return null;
+        }
         return $controller->getRequest()->getSession();
     }
 
@@ -124,6 +133,9 @@ class HoneypotField extends CompositeField
     protected function getClientIp()
     {
         $controller = Controller::curr();
+        if (!$controller || !$controller->getRequest()) {
+            return 'unknown';
+        }
         return $controller->getRequest()->getIP() ?: 'unknown';
     }
 
@@ -166,7 +178,7 @@ class HoneypotField extends CompositeField
         // 1. Timestamp: must exist, be >= min seconds, and <= max seconds old.
         //    Checked before rate-limit so crawlers that skip JS don't consume quota.
         $session = $this->getSession();
-        $fieldCreated = $session->get('honeypot_time');
+        $fieldCreated = $session ? $session->get('honeypot_time') : null;
 
         if (!$fieldCreated) {
             $result->addFieldError($this->name, $spam . ' (0)');
